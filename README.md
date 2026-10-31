@@ -35,7 +35,7 @@ Terraform/
 Docs/
   01-INSTALL-TERRAFORM-AWSCLI.md      # How to install Terraform and AWS CLI
   02-AWS-CREDENTIALS-CODESPACES.md    # How to configure AWS credentials in Codespaces
-  03-TERRAFORM-WORKFLOW.md            # Full Terraform command reference and workflow
+  03-TERRAFORM-WORKFLOW.md            # Full command reference and workflow for the AWS CLI scripts and Terraform
 ```
 
 ## Prerequisites
@@ -91,6 +91,8 @@ The script reads `Resources.env`, prints a summary of what will be deleted, and 
 4. Delete the subnets
 5. Delete the VPC
 
+For the full AWS CLI command reference and workflow, see [Docs/03-TERRAFORM-WORKFLOW.md](Docs/03-TERRAFORM-WORKFLOW.md).
+
 ## Option 2 — Terraform
 
 Terraform manages all the same resources through its state file and resolves dependency and deletion order automatically.
@@ -116,7 +118,7 @@ terraform plan -destroy     # review what will be removed
 terraform destroy
 ```
 
-For the full Terraform command reference and workflow, see [Docs/03-TERRAFORM-WORKFLOW.md](Docs/03-TERRAFORM-WORKFLOW.md).
+For the full command reference and workflow for both tools, see [Docs/03-TERRAFORM-WORKFLOW.md](Docs/03-TERRAFORM-WORKFLOW.md).
 
 ### Importing existing CLI resources into Terraform
 

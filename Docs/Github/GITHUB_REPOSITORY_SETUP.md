@@ -7,31 +7,20 @@ This guide covers two common scenarios:
 
 ---
 
-# Option 1: Create a New GitHub Repository from Codespaces
+## Option 1: Create a New Repository from Codespaces
 
-If you have a project in GitHub Codespaces but do not have a GitHub repository for it yet, you can create one directly from the Codespaces terminal using the GitHub CLI.
+If you have a project in GitHub Codespaces but no repository for it yet, you can create one directly from the terminal using the GitHub CLI.
 
-## Step 1: Open the Terminal
+### Step 1: Open the Terminal
 
-In Codespaces, open the terminal:
-
-**Terminal → New Terminal**
-
-Verify that the GitHub CLI is available:
+In Codespaces, open the terminal and verify that the GitHub CLI is available:
 
 ```bash
 gh --version
-```
-
-You can also verify that you are authenticated:
-
-```bash
 gh auth status
 ```
 
----
-
-## Step 2: Initialize Git
+### Step 2: Initialize Git
 
 Go to your project directory if necessary:
 
@@ -45,77 +34,38 @@ Initialize the project as a Git repository:
 git init
 ```
 
----
+### Step 3: Add Your Project Files
 
-## Step 3: Add Your Project Files
-
-Check your files:
+Check your files, then stage and commit them:
 
 ```bash
 git status
-```
-
-Add all project files:
-
-```bash
 git add .
-```
-
-Create the first commit:
-
-```bash
 git commit -m "Initial commit"
-```
-
-Rename the branch to `main`:
-
-```bash
 git branch -M main
 ```
 
----
+### Step 4: Create the GitHub Repository
 
-## Step 4: Create the GitHub Repository
-
-Create a new GitHub repository directly from Codespaces:
+Create a new private GitHub repository:
 
 ```bash
 gh repo create my-project --private --source=. --remote=origin
 ```
 
-Replace:
-
-```text
-my-project
-```
-
-with the name you want for your repository.
-
-For example:
+Replace `my-project` with the name you want. To make it public instead:
 
 ```bash
-gh repo create aws-vpc-project --private --source=. --remote=origin
+gh repo create my-project --public --source=. --remote=origin
 ```
 
-If you want the repository to be public instead:
-
-```bash
-gh repo create aws-vpc-project --public --source=. --remote=origin
-```
-
----
-
-## Step 5: Push the Project
-
-Push your project to the newly created repository:
+### Step 5: Push the Project
 
 ```bash
 git push -u origin main
 ```
 
-Your project is now stored in GitHub.
-
-You can confirm the connection with:
+Confirm the remote connection:
 
 ```bash
 git remote -v
@@ -123,239 +73,129 @@ git remote -v
 
 ---
 
-# Option 2: The GitHub Repository Already Exists and Is Empty
+## Option 2: Push to an Existing Empty Repository
 
-Suppose you already created an empty repository on GitHub and now want to save your Codespaces project there.
+If you already created an empty repository on GitHub and want to push your Codespaces project to it:
 
-For example:
-
-```text
-https://github.com/yourusername/aws-vpc-project.git
-```
-
-## Step 1: Initialize Git
-
-From your project directory:
+### Step 1: Initialize Git
 
 ```bash
 git init
-```
-
----
-
-## Step 2: Add Your Files
-
-```bash
 git add .
-```
-
-Commit them:
-
-```bash
 git commit -m "Initial commit"
-```
-
-Make sure your branch is called `main`:
-
-```bash
 git branch -M main
 ```
 
----
-
-## Step 3: Connect the Existing GitHub Repository
-
-Add the empty GitHub repository as your remote:
+### Step 2: Connect the Existing Repository
 
 ```bash
-git remote add origin https://github.com/yourusername/aws-vpc-project.git
-```
-
-Verify it:
-
-```bash
+git remote add origin https://github.com/yourusername/your-repo.git
 git remote -v
 ```
 
-You should see something similar to:
+You should see:
 
 ```text
-origin  https://github.com/yourusername/aws-vpc-project.git (fetch)
-origin  https://github.com/yourusername/aws-vpc-project.git (push)
+origin  https://github.com/yourusername/your-repo.git (fetch)
+origin  https://github.com/yourusername/your-repo.git (push)
 ```
 
----
-
-## Step 4: Push the Project
-
-Push your local project:
+### Step 3: Push the Project
 
 ```bash
 git push -u origin main
 ```
 
-The project that was in Codespaces will now appear inside the GitHub repository.
-
 ---
 
-# After the Initial Setup
+## Day-to-Day Workflow
 
-Once the repository has been configured, you do **not** have to repeat the initialization or remote configuration.
-
-When you modify your project, the normal workflow is:
-
-## 1. Check what changed
+Once the repository is set up, you do not need to repeat the initialization steps. The normal workflow for any change is:
 
 ```bash
 git status
-```
-
-## 2. Add the changes
-
-```bash
 git add .
-```
-
-## 3. Commit the changes
-
-```bash
 git commit -m "Describe what changed"
-```
-
-For example:
-
-```bash
-git commit -m "Add VPC creation script"
-```
-
-## 4. Push the changes
-
-```bash
 git push
 ```
 
-So your normal workflow becomes:
+For more specific staging (recommended):
 
 ```bash
 git status
-git add .
-git commit -m "Update project"
+git add path/to/changed-file
+git diff --staged
+git commit -m "Describe what changed"
 git push
 ```
 
 ---
 
-# Quick Reference
+## Important: Use a `.gitignore`
 
-## New repository created from Codespaces
+Before running `git add .`, make sure your project has a `.gitignore` that excludes files that must not be committed — especially AWS credentials and Terraform state.
 
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-
-gh repo create my-project --private --source=. --remote=origin
-
-git push -u origin main
-```
-
-## Existing empty GitHub repository
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-
-git remote add origin https://github.com/yourusername/my-project.git
-
-git push -u origin main
-```
-
-## Future changes
-
-```bash
-git status
-git add .
-git commit -m "Describe your changes"
-git push
-```
-
----
-
-# Important: Use a `.gitignore`
-
-Before running:
-
-```bash
-git add .
-```
-
-check whether your project contains files that should **not** be uploaded to GitHub.
-
-For example, if you are working with AWS CLI scripts, do not commit AWS credentials, access keys, secret keys, `.env` files, or other secrets.
-
-A basic `.gitignore` could contain:
+A minimal `.gitignore` for this project:
 
 ```text
 .env
 *.pem
 *.key
 .env.*
+terraform.tfstate
+terraform.tfstate.backup
+tfplan
+.terraform/
 ```
 
-Then you can safely run:
-
-```bash
-git add .
-git status
-```
-
-Always review `git status` before committing.
+Always review `git status` before committing to confirm nothing sensitive is staged.
 
 ---
 
-# Useful Git Commands
+## Quick Reference
 
-Check repository status:
+### New repository from Codespaces
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+gh repo create my-project --private --source=. --remote=origin
+git push -u origin main
+```
+
+### Existing empty repository
+
+```bash
+git init
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/yourusername/my-project.git
+git push -u origin main
+```
+
+### Future changes
 
 ```bash
 git status
-```
-
-See configured GitHub repository:
-
-```bash
-git remote -v
-```
-
-See commits:
-
-```bash
-git log --oneline
-```
-
-See branches:
-
-```bash
-git branch
-```
-
-See changed files:
-
-```bash
-git diff
-```
-
-Push changes:
-
-```bash
+git add path/to/file
+git commit -m "Describe your changes"
 git push
 ```
 
-Pull changes from GitHub:
+---
 
-```bash
-git pull
-```
+## Useful Git Commands
+
+| Command | What it does |
+|---|---|
+| `git status` | Show changed and staged files |
+| `git diff` | Show unstaged changes |
+| `git diff --staged` | Show staged changes |
+| `git log --oneline` | Show recent commits |
+| `git branch` | List branches |
+| `git remote -v` | Show configured remotes |
+| `git pull` | Pull latest changes from GitHub |
+| `git push` | Push committed changes to GitHub |
