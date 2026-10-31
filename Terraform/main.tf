@@ -28,6 +28,12 @@ locals {
       availability_zone = "us-east-1b"
     }
   }
+
+  # Only subnets whose name starts with "Public_" get internet access.
+  public_subnets = {
+    for name, config in local.subnets : name => config
+    if strcontains(name, "Public_")
+  }
 }
 
 resource "aws_vpc" "main" {
@@ -48,4 +54,44 @@ resource "aws_subnet" "subnets" {
   tags = {
     Name = each.key
   }
+}
+
+# -------------------------
+# Internet Gateway
+# -------------------------
+# Creates the IGW and attaches it to the VPC in a single resource.
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
+
+  tags = {
+    Name = "my-codeCreatedIGW"
+  }
+}
+
+# -------------------------
+# Route Table for public subnets
+# -------------------------
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  # The 0.0.0.0/0 route pointing at the IGW is what makes a subnet "public".
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+
+  tags = {
+    Name = "Public_Route_Table"
+  }
+}
+
+# Associate every public subnet with the public route table.
+# for_each iterates only over local.public_subnets (the filtered map),
+# so private subnets are automatically excluded — they stay on the
+# VPC's default main route table which has no internet route.
+resource "aws_route_table_association" "public" {
+  for_each = local.public_subnets
+
+  subnet_id      = aws_subnet.subnets[each.key].id
+  route_table_id = aws_route_table.public.id
 }

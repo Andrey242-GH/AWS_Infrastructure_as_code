@@ -87,5 +87,98 @@ for subnet in "${Subnet_Array[@]}"; do
     --region "$REGION"
 done
 
+# -------------------------
+# Create Internet Gateway and attach to VPC
+# -------------------------
+IGW_ID=$(aws ec2 create-internet-gateway \
+  --region "$REGION" \
+  --query 'InternetGateway.InternetGatewayId' \
+  --output text)
+
+if [[ -z "$IGW_ID" || "$IGW_ID" == "None" ]]; then
+  printf 'Could not capture the created Internet Gateway ID.\n' >&2
+  exit 1
+fi
+
+printf 'IGW_ID=%s\n' "$IGW_ID" >> "$ID_FILE"
+echo "Created Internet Gateway with ID: $IGW_ID"
+
+# Name the Internet Gateway
+aws ec2 create-tags \
+  --resources "$IGW_ID" \
+  --tags Key=Name,Value="my-codeCreatedIGW" \
+  --region "$REGION"
+
+# Attach the Internet Gateway to the VPC
+aws ec2 attach-internet-gateway \
+  --internet-gateway-id "$IGW_ID" \
+  --vpc-id "$VPC_ID" \
+  --region "$REGION"
+
+echo "Attached Internet Gateway $IGW_ID to VPC $VPC_ID"
+
+# -------------------------
+# Create Route Table for public subnets
+# -------------------------
+RTB_ID=$(aws ec2 create-route-table \
+  --vpc-id "$VPC_ID" \
+  --region "$REGION" \
+  --query 'RouteTable.RouteTableId' \
+  --output text)
+
+if [[ -z "$RTB_ID" || "$RTB_ID" == "None" ]]; then
+  printf 'Could not capture the created Route Table ID.\n' >&2
+  exit 1
+fi
+
+printf 'RTB_ID=%s\n' "$RTB_ID" >> "$ID_FILE"
+echo "Created Route Table with ID: $RTB_ID"
+
+# Name the Route Table
+aws ec2 create-tags \
+  --resources "$RTB_ID" \
+  --tags Key=Name,Value="Public_Route_Table" \
+  --region "$REGION"
+
+# Add a route: 0.0.0.0/0 -> Internet Gateway (this is what makes subnets "public")
+aws ec2 create-route \
+  --route-table-id "$RTB_ID" \
+  --destination-cidr-block "0.0.0.0/0" \
+  --gateway-id "$IGW_ID" \
+  --region "$REGION"
+
+echo "Added route 0.0.0.0/0 -> IGW $IGW_ID to Route Table $RTB_ID"
+
+# -------------------------
+# Associate only the public subnets with the route table
+# -------------------------
+ASSOC_INDEX=0
+for subnet in "${Subnet_Array[@]}"; do
+  SUBNET_NAME=$(echo "$subnet" | jq -r '.SubnetName')
+
+  # Skip private subnets — only public subnets get the internet route
+  if [[ "$SUBNET_NAME" != Public_* ]]; then
+    continue
+  fi
+
+  SUBNET_ID=$(grep "^SUBNET_${SUBNET_NAME}_ID=" "$ID_FILE" | cut -d= -f2)
+
+  ASSOC_ID=$(aws ec2 associate-route-table \
+    --route-table-id "$RTB_ID" \
+    --subnet-id "$SUBNET_ID" \
+    --region "$REGION" \
+    --query 'AssociationId' \
+    --output text)
+
+  if [[ -z "$ASSOC_ID" || "$ASSOC_ID" == "None" ]]; then
+    printf 'Could not associate subnet %s with route table.\n' "$SUBNET_NAME" >&2
+    exit 1
+  fi
+
+  printf 'RTB_ASSOC_%s_ID=%s\n' "$SUBNET_NAME" "$ASSOC_ID" >> "$ID_FILE"
+  echo "Associated $SUBNET_NAME ($SUBNET_ID) with Route Table $RTB_ID"
+  ASSOC_INDEX=$((ASSOC_INDEX + 1))
+done
+
 printf '\nCreated resource IDs (also saved to %s):\n' "$ID_FILE"
 cat "$ID_FILE"
