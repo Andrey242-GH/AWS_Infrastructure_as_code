@@ -20,9 +20,13 @@ RTB_ID=''
 NATGW_ID=''
 EIP_ALLOC_ID=''
 PRIVATE_RTB_ID=''
+AMI_ID=''
+SG_ID=''
+BASTION_ID=''
 declare -a SUBNET_IDS=()
 declare -a RTB_ASSOC_IDS=()
 declare -a PRIVATE_RTB_ASSOC_IDS=()
+declare -a PRIVATE_INSTANCE_IDS=()
 declare -a SEEN_KEYS=()
 
 while IFS= read -r line || [[ -n "$line" ]]; do
@@ -89,6 +93,34 @@ while IFS= read -r line || [[ -n "$line" ]]; do
       fi
       PRIVATE_RTB_ID=$value
       ;;
+    AMI_ID)
+      if [[ " ${SEEN_KEYS[*]} " == *" AMI_ID "* ]]; then
+        printf 'Duplicate value for AMI_ID in resource ID file.\n' >&2
+        exit 1
+      fi
+      AMI_ID=$value
+      ;;
+    SG_ID)
+      if [[ " ${SEEN_KEYS[*]} " == *" SG_ID "* ]]; then
+        printf 'Duplicate value for SG_ID in resource ID file.\n' >&2
+        exit 1
+      fi
+      SG_ID=$value
+      ;;
+    BASTION_ID)
+      if [[ " ${SEEN_KEYS[*]} " == *" BASTION_ID "* ]]; then
+        printf 'Duplicate value for BASTION_ID in resource ID file.\n' >&2
+        exit 1
+      fi
+      BASTION_ID=$value
+      ;;
+    PRIVATE_INSTANCE_1_ID|PRIVATE_INSTANCE_2_ID)
+      if [[ " ${SEEN_KEYS[*]} " == *" $key "* ]]; then
+        printf 'Duplicate value for %s in resource ID file.\n' "$key" >&2
+        exit 1
+      fi
+      PRIVATE_INSTANCE_IDS+=("$value")
+      ;;
     RTB_ASSOC_*)
       if [[ " ${SEEN_KEYS[*]} " == *" $key "* ]]; then
         printf 'Duplicate value for %s in resource ID file.\n' "$key" >&2
@@ -147,6 +179,20 @@ if [[ -n "$PRIVATE_RTB_ID" && ! "$PRIVATE_RTB_ID" =~ ^rtb-[[:xdigit:]]{8,17}$ ]]
   printf 'Invalid Private Route Table ID in resource ID file.\n' >&2
   exit 1
 fi
+if [[ -n "$SG_ID" && ! "$SG_ID" =~ ^sg-[[:xdigit:]]{8,17}$ ]]; then
+  printf 'Invalid Security Group ID in resource ID file.\n' >&2
+  exit 1
+fi
+if [[ -n "$BASTION_ID" && ! "$BASTION_ID" =~ ^i-[[:xdigit:]]{8,17}$ ]]; then
+  printf 'Invalid Bastion instance ID in resource ID file.\n' >&2
+  exit 1
+fi
+for instance_id in "${PRIVATE_INSTANCE_IDS[@]}"; do
+  if [[ ! "$instance_id" =~ ^i-[[:xdigit:]]{8,17}$ ]]; then
+    printf 'Invalid private instance ID in resource ID file.\n' >&2
+    exit 1
+  fi
+done
 if [[ ${#SUBNET_IDS[@]} -eq 0 ]]; then
   printf 'No subnet IDs found in resource ID file.\n' >&2
   exit 1
@@ -170,16 +216,42 @@ printf 'AWS account: %s\nRegion: %s\nVPC: %s\n' "$ACCOUNT_ID" "$REGION" "$VPC_ID
 [[ -n "$NATGW_ID" ]] && printf 'NAT Gateway: %s\n' "$NATGW_ID"
 [[ -n "$EIP_ALLOC_ID" ]] && printf 'EIP Allocation: %s\n' "$EIP_ALLOC_ID"
 [[ -n "$PRIVATE_RTB_ID" ]] && printf 'Private Route Table: %s\n' "$PRIVATE_RTB_ID"
+[[ -n "$SG_ID" ]] && printf 'Security Group (ec2_HeartBeat): %s\n' "$SG_ID"
+[[ -n "$BASTION_ID" ]] && printf 'Bastion Host instance: %s\n' "$BASTION_ID"
+if [[ ${#PRIVATE_INSTANCE_IDS[@]} -gt 0 ]]; then
+  printf 'Private HeartBeat instances:\n'
+  printf '  %s\n' "${PRIVATE_INSTANCE_IDS[@]}"
+fi
 printf 'Subnets:\n'
 printf '  %s\n' "${SUBNET_IDS[@]}"
-printf '\nThis will permanently delete the route table associations, route tables, NAT gateway, elastic IP, internet gateway, subnets, and the VPC.\n'
+printf '\nThis will permanently terminate the instances, delete the security group, route tables, NAT gateway, elastic IP, internet gateway, subnets, and the VPC.\n'
 read -r -p "Type DELETE to continue: " confirmation
 if [[ "$confirmation" != "DELETE" ]]; then
   printf 'Deletion cancelled.\n'
   exit 1
 fi
 
-# 1. Disassociate private route table from subnets
+# 1. Terminate EC2 instances and wait for them to stop
+#    Instances must be fully terminated before their security group and
+#    subnet can be deleted — AWS won't allow either while an ENI is still attached.
+INSTANCE_IDS_TO_TERMINATE=()
+[[ -n "$BASTION_ID" ]] && INSTANCE_IDS_TO_TERMINATE+=("$BASTION_ID")
+INSTANCE_IDS_TO_TERMINATE+=("${PRIVATE_INSTANCE_IDS[@]}")
+
+if [[ ${#INSTANCE_IDS_TO_TERMINATE[@]} -gt 0 ]]; then
+  aws ec2 terminate-instances \
+    --instance-ids "${INSTANCE_IDS_TO_TERMINATE[@]}" \
+    --region "$REGION"
+  printf 'Terminating instances: %s\n' "${INSTANCE_IDS_TO_TERMINATE[*]}"
+
+  printf 'Waiting for all instances to reach terminated state...\n'
+  aws ec2 wait instance-terminated \
+    --instance-ids "${INSTANCE_IDS_TO_TERMINATE[@]}" \
+    --region "$REGION"
+  printf 'All instances terminated.\n'
+fi
+
+# 2. Disassociate private route table from subnets
 for assoc_id in "${PRIVATE_RTB_ASSOC_IDS[@]}"; do
   aws ec2 disassociate-route-table \
     --association-id "$assoc_id" \
@@ -187,7 +259,7 @@ for assoc_id in "${PRIVATE_RTB_ASSOC_IDS[@]}"; do
   printf 'Disassociated private route table association: %s\n' "$assoc_id"
 done
 
-# 2. Delete the private route table
+# 3. Delete the private route table
 if [[ -n "$PRIVATE_RTB_ID" ]]; then
   aws ec2 delete-route-table \
     --route-table-id "$PRIVATE_RTB_ID" \
@@ -195,7 +267,7 @@ if [[ -n "$PRIVATE_RTB_ID" ]]; then
   printf 'Deleted Private Route Table: %s\n' "$PRIVATE_RTB_ID"
 fi
 
-# 3. Delete the NAT Gateway and wait for it to fully terminate
+# 4. Delete the NAT Gateway and wait for it to fully terminate
 if [[ -n "$NATGW_ID" ]]; then
   aws ec2 delete-nat-gateway \
     --nat-gateway-id "$NATGW_ID" \
@@ -207,7 +279,7 @@ if [[ -n "$NATGW_ID" ]]; then
   printf 'NAT Gateway deleted: %s\n' "$NATGW_ID"
 fi
 
-# 4. Release the Elastic IP (must happen after NAT GW is gone)
+# 5. Release the Elastic IP (must happen after NAT GW is gone)
 if [[ -n "$EIP_ALLOC_ID" ]]; then
   aws ec2 release-address \
     --allocation-id "$EIP_ALLOC_ID" \
@@ -215,7 +287,7 @@ if [[ -n "$EIP_ALLOC_ID" ]]; then
   printf 'Released Elastic IP: %s\n' "$EIP_ALLOC_ID"
 fi
 
-# 5. Disassociate public route table from subnets
+# 6. Disassociate public route table from subnets
 for assoc_id in "${RTB_ASSOC_IDS[@]}"; do
   aws ec2 disassociate-route-table \
     --association-id "$assoc_id" \
@@ -223,7 +295,7 @@ for assoc_id in "${RTB_ASSOC_IDS[@]}"; do
   printf 'Disassociated route table association: %s\n' "$assoc_id"
 done
 
-# 6. Delete the public route table (only if it exists)
+# 7. Delete the public route table
 if [[ -n "$RTB_ID" ]]; then
   aws ec2 delete-route-table \
     --route-table-id "$RTB_ID" \
@@ -231,7 +303,7 @@ if [[ -n "$RTB_ID" ]]; then
   printf 'Deleted Route Table: %s\n' "$RTB_ID"
 fi
 
-# 7. Detach the internet gateway from the VPC, then delete it (only if it exists)
+# 8. Detach and delete the internet gateway
 if [[ -n "$IGW_ID" ]]; then
   aws ec2 detach-internet-gateway \
     --internet-gateway-id "$IGW_ID" \
@@ -245,7 +317,16 @@ if [[ -n "$IGW_ID" ]]; then
   printf 'Deleted Internet Gateway: %s\n' "$IGW_ID"
 fi
 
-# 8. Delete subnets
+# 9. Delete the security group
+#    Must be after instances are terminated and IGW is gone so no ENIs reference it.
+if [[ -n "$SG_ID" ]]; then
+  aws ec2 delete-security-group \
+    --group-id "$SG_ID" \
+    --region "$REGION"
+  printf 'Deleted Security Group: %s\n' "$SG_ID"
+fi
+
+# 10. Delete subnets
 for subnet_id in "${SUBNET_IDS[@]}"; do
   aws ec2 delete-subnet \
     --subnet-id "$subnet_id" \
@@ -253,7 +334,7 @@ for subnet_id in "${SUBNET_IDS[@]}"; do
   printf 'Deleted subnet: %s\n' "$subnet_id"
 done
 
-# 9. Delete the VPC
+# 11. Delete the VPC
 aws ec2 delete-vpc \
   --vpc-id "$VPC_ID" \
   --region "$REGION"

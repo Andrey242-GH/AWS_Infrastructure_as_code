@@ -34,3 +34,33 @@ output "private_route_table_id" {
   description = "ID of the private route table (routes via NAT Gateway)."
   value       = aws_route_table.private.id
 }
+
+output "bastion_instance_id" {
+  description = "Instance ID of the bastion host in Public_Subnet_1."
+  value       = aws_instance.bastion.id
+}
+
+output "bastion_public_ip" {
+  description = "Public IP address of the bastion host."
+  value       = aws_instance.bastion.public_ip
+}
+
+output "private_instance_ids" {
+  description = "Instance IDs of the two private HeartBeat instances."
+  value       = aws_instance.private[*].id
+}
+
+output "private_instance_public_ips" {
+  description = "Public IP addresses of the private HeartBeat instances."
+  value       = aws_instance.private[*].public_ip
+}
+
+output "private_instance_private_ips" {
+  description = "Private IP addresses of the private HeartBeat instances (use these from inside the VPC)."
+  value       = aws_instance.private[*].private_ip
+}
+
+output "security_group_id" {
+  description = "ID of the ec2_HeartBeat security group."
+  value       = aws_security_group.ec2_heartbeat.id
+}

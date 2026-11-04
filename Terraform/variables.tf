@@ -15,3 +15,15 @@ variable "vpc_name" {
   type        = string
   default     = "my-codeCreatedVPC"
 }
+
+variable "instance_type" {
+  description = "EC2 instance type for all instances."
+  type        = string
+  default     = "t2.micro"
+}
+
+variable "key_name" {
+  description = "Name of an existing EC2 key pair to assign to all instances. Leave empty to launch without a key pair."
+  type        = string
+  default     = ""
+}

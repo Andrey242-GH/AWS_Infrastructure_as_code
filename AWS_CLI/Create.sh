@@ -307,5 +307,209 @@ for subnet in "${Subnet_Array[@]}"; do
   echo "Associated $SUBNET_NAME ($SUBNET_ID) with Private Route Table $PRIVATE_RTB_ID"
 done
 
+# -------------------------
+# Resolve the latest Amazon Linux 2023 AMI for the region
+# (uses dnf, which matches the user-data script)
+# -------------------------
+AMI_ID=$(aws ec2 describe-images \
+  --owners amazon \
+  --filters \
+    "Name=name,Values=al2023-ami-*-x86_64" \
+    "Name=virtualization-type,Values=hvm" \
+    "Name=state,Values=available" \
+  --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
+  --region "$REGION" \
+  --output text)
+
+if [[ -z "$AMI_ID" || "$AMI_ID" == "None" ]]; then
+  printf 'Could not resolve Amazon Linux 2023 AMI.\n' >&2
+  exit 1
+fi
+
+printf 'AMI_ID=%s\n' "$AMI_ID" >> "$ID_FILE"
+echo "Resolved AMI: $AMI_ID"
+
+# -------------------------
+# User-data script (shared by all three instances)
+# -------------------------
+USER_DATA=$(cat <<'USERDATA'
+#!/bin/bash
+set -Eeuo pipefail
+
+# Save script output so setup problems can be diagnosed after launch.
+exec > >(tee -a /var/log/user-data.log) 2>&1
+
+APP_DIR="/opt/Heartbeat_Automation"
+SERVICE_USER="heartbeat_User"
+REPO_URL="https://github.com/Andrey242-GH/Heartbeat_Python_Automation.git"
+BRANCH="main"
+
+echo "Starting EC2 Heartbeat Automation setup..."
+
+# Install operating-system packages required to download and run the app.
+dnf update -y
+dnf install -y git python3 python3-pip
+
+# Create the service account if it does not already exist.
+if ! id -u "$SERVICE_USER" >/dev/null 2>&1; then
+  useradd \
+    --system \
+    --home-dir "$APP_DIR" \
+    --shell /sbin/nologin \
+    "$SERVICE_USER"
+fi
+
+# Download only the selected branch into the path expected by systemd.
+git clone \
+  --single-branch \
+  --branch "$BRANCH" \
+  "$REPO_URL" \
+  "$APP_DIR"
+
+# Let the service account read the app and manage its virtual environment.
+chown -R "$SERVICE_USER:$SERVICE_USER" "$APP_DIR"
+runuser -u "$SERVICE_USER" -- \
+  python3 -m venv "$APP_DIR/.venv"
+
+# Install the Python packages used by the dashboard and heartbeat job.
+runuser -u "$SERVICE_USER" -- \
+  "$APP_DIR/.venv/bin/python" -m pip install --upgrade pip
+runuser -u "$SERVICE_USER" -- \
+  "$APP_DIR/.venv/bin/python" -m pip install \
+  -r "$APP_DIR/requirements.txt"
+
+# Create storage that the heartbeat account can write to.
+mkdir -p /var/lib/heartbeat
+chown "$SERVICE_USER:$SERVICE_USER" /var/lib/heartbeat
+chmod 750 /var/lib/heartbeat
+
+# Run the tests before installing and starting the services (Optional).
+cd "$APP_DIR"
+runuser -u "$SERVICE_USER" -- \
+  "$APP_DIR/.venv/bin/python" -m pytest -v
+
+# Install the systemd unit files provided by the repository.
+cp "$APP_DIR/systemd/heartbeat.service" \
+  /etc/systemd/system/heartbeat.service
+cp "$APP_DIR/systemd/heartbeat.timer" \
+  /etc/systemd/system/heartbeat.timer
+cp "$APP_DIR/systemd/heartbeat-web.service" \
+  /etc/systemd/system/heartbeat-web.service
+
+# Make systemd read the new units, run one heartbeat, and start the services.
+systemctl daemon-reload
+systemctl start heartbeat.service
+systemctl enable --now heartbeat.timer
+systemctl enable --now heartbeat-web.service
+
+echo "Heartbeat automation deployment completed."
+USERDATA
+)
+
+# -------------------------
+# Security Group — ec2_HeartBeat
+# -------------------------
+SG_ID=$(aws ec2 create-security-group \
+  --group-name "ec2_HeartBeat" \
+  --description "Allow SSH and HTTP inbound traffic for HeartBeat instances" \
+  --vpc-id "$VPC_ID" \
+  --region "$REGION" \
+  --query 'GroupId' \
+  --output text)
+
+if [[ -z "$SG_ID" || "$SG_ID" == "None" ]]; then
+  printf 'Could not create security group.\n' >&2
+  exit 1
+fi
+
+printf 'SG_ID=%s\n' "$SG_ID" >> "$ID_FILE"
+echo "Created Security Group ec2_HeartBeat with ID: $SG_ID"
+
+aws ec2 create-tags \
+  --resources "$SG_ID" \
+  --tags Key=Name,Value="ec2_HeartBeat" \
+  --region "$REGION"
+
+# SSH inbound — port 22
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --protocol tcp \
+  --port 22 \
+  --cidr 0.0.0.0/0 \
+  --region "$REGION"
+echo "Added SSH (port 22) inbound rule to $SG_ID"
+
+# HTTP inbound — port 80
+aws ec2 authorize-security-group-ingress \
+  --group-id "$SG_ID" \
+  --protocol tcp \
+  --port 80 \
+  --cidr 0.0.0.0/0 \
+  --region "$REGION"
+echo "Added HTTP (port 80) inbound rule to $SG_ID"
+
+# -------------------------
+# Bastion host — Public_Subnet_1
+# -------------------------
+PUBLIC_SUBNET_1_ID=$(grep "^SUBNET_Public_Subnet_1_ID=" "$ID_FILE" | cut -d= -f2)
+
+BASTION_ID=$(aws ec2 run-instances \
+  --image-id "$AMI_ID" \
+  --instance-type "t2.micro" \
+  --subnet-id "$PUBLIC_SUBNET_1_ID" \
+  --security-group-ids "$SG_ID" \
+  --instance-initiated-shutdown-behavior terminate \
+  --user-data "$USER_DATA" \
+  --region "$REGION" \
+  --query 'Instances[0].InstanceId' \
+  --output text)
+
+if [[ -z "$BASTION_ID" || "$BASTION_ID" == "None" ]]; then
+  printf 'Could not launch bastion instance.\n' >&2
+  exit 1
+fi
+
+printf 'BASTION_ID=%s\n' "$BASTION_ID" >> "$ID_FILE"
+echo "Launched Bastion_Host with ID: $BASTION_ID"
+
+aws ec2 create-tags \
+  --resources "$BASTION_ID" \
+  --tags Key=Name,Value="Bastion_Host" \
+  --region "$REGION"
+
+# -------------------------
+# Private instances — Private_Subnet_1 (x2)
+# Auto-assign public IP is enabled per-instance because the subnet itself
+# does not have map_public_ip_on_launch set.
+# -------------------------
+PRIVATE_SUBNET_1_ID=$(grep "^SUBNET_Private_Subnet_1_ID=" "$ID_FILE" | cut -d= -f2)
+
+for i in 1 2; do
+  INSTANCE_ID=$(aws ec2 run-instances \
+    --image-id "$AMI_ID" \
+    --instance-type "t2.micro" \
+    --subnet-id "$PRIVATE_SUBNET_1_ID" \
+    --security-group-ids "$SG_ID" \
+    --associate-public-ip-address \
+    --instance-initiated-shutdown-behavior terminate \
+    --user-data "$USER_DATA" \
+    --region "$REGION" \
+    --query 'Instances[0].InstanceId' \
+    --output text)
+
+  if [[ -z "$INSTANCE_ID" || "$INSTANCE_ID" == "None" ]]; then
+    printf 'Could not launch Private_HeartBeat_%s.\n' "$i" >&2
+    exit 1
+  fi
+
+  printf 'PRIVATE_INSTANCE_%s_ID=%s\n' "$i" "$INSTANCE_ID" >> "$ID_FILE"
+  echo "Launched Private_HeartBeat_$i with ID: $INSTANCE_ID"
+
+  aws ec2 create-tags \
+    --resources "$INSTANCE_ID" \
+    --tags Key=Name,Value="Private_HeartBeat_$i" \
+    --region "$REGION"
+done
+
 printf '\nCreated resource IDs (also saved to %s):\n' "$ID_FILE"
 cat "$ID_FILE"
