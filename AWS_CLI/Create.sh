@@ -85,6 +85,16 @@ for subnet in "${Subnet_Array[@]}"; do
     --resources "$SUBNET_ID" \
     --tags Key=Name,Value="$SUBNET_NAME" \
     --region "$REGION"
+
+  # Enable auto-assign public IPv4 for public subnets so instances launched
+  # there receive a public IP address without needing to request one explicitly.
+  if [[ "$SUBNET_NAME" == Public_* ]]; then
+    aws ec2 modify-subnet-attribute \
+      --subnet-id "$SUBNET_ID" \
+      --map-public-ip-on-launch \
+      --region "$REGION"
+    echo "Enabled auto-assign public IPv4 for $SUBNET_NAME"
+  fi
 done
 
 # -------------------------
@@ -178,6 +188,123 @@ for subnet in "${Subnet_Array[@]}"; do
   printf 'RTB_ASSOC_%s_ID=%s\n' "$SUBNET_NAME" "$ASSOC_ID" >> "$ID_FILE"
   echo "Associated $SUBNET_NAME ($SUBNET_ID) with Route Table $RTB_ID"
   ASSOC_INDEX=$((ASSOC_INDEX + 1))
+done
+
+# -------------------------
+# Allocate Elastic IP for NAT Gateway
+# -------------------------
+EIP_ALLOC_ID=$(aws ec2 allocate-address \
+  --domain vpc \
+  --region "$REGION" \
+  --query 'AllocationId' \
+  --output text)
+
+if [[ -z "$EIP_ALLOC_ID" || "$EIP_ALLOC_ID" == "None" ]]; then
+  printf 'Could not allocate Elastic IP.\n' >&2
+  exit 1
+fi
+
+printf 'EIP_ALLOC_ID=%s\n' "$EIP_ALLOC_ID" >> "$ID_FILE"
+echo "Allocated Elastic IP with Allocation ID: $EIP_ALLOC_ID"
+
+# Name the EIP
+aws ec2 create-tags \
+  --resources "$EIP_ALLOC_ID" \
+  --tags Key=Name,Value="my-codeCreatedNATGW-EIP" \
+  --region "$REGION"
+
+# -------------------------
+# Create NAT Gateway in Public_Subnet_1
+# -------------------------
+PUBLIC_SUBNET_1_ID=$(grep "^SUBNET_Public_Subnet_1_ID=" "$ID_FILE" | cut -d= -f2)
+
+NATGW_ID=$(aws ec2 create-nat-gateway \
+  --subnet-id "$PUBLIC_SUBNET_1_ID" \
+  --allocation-id "$EIP_ALLOC_ID" \
+  --region "$REGION" \
+  --query 'NatGateway.NatGatewayId' \
+  --output text)
+
+if [[ -z "$NATGW_ID" || "$NATGW_ID" == "None" ]]; then
+  printf 'Could not create NAT Gateway.\n' >&2
+  exit 1
+fi
+
+printf 'NATGW_ID=%s\n' "$NATGW_ID" >> "$ID_FILE"
+echo "Created NAT Gateway with ID: $NATGW_ID"
+
+# Name the NAT Gateway
+aws ec2 create-tags \
+  --resources "$NATGW_ID" \
+  --tags Key=Name,Value="my-codeCreatedNATGW" \
+  --region "$REGION"
+
+# Wait for the NAT Gateway to become available before creating routes
+echo "Waiting for NAT Gateway $NATGW_ID to become available..."
+aws ec2 wait nat-gateway-available \
+  --nat-gateway-ids "$NATGW_ID" \
+  --region "$REGION"
+echo "NAT Gateway $NATGW_ID is available."
+
+# -------------------------
+# Create Route Table for private subnets
+# -------------------------
+PRIVATE_RTB_ID=$(aws ec2 create-route-table \
+  --vpc-id "$VPC_ID" \
+  --region "$REGION" \
+  --query 'RouteTable.RouteTableId' \
+  --output text)
+
+if [[ -z "$PRIVATE_RTB_ID" || "$PRIVATE_RTB_ID" == "None" ]]; then
+  printf 'Could not create private Route Table.\n' >&2
+  exit 1
+fi
+
+printf 'PRIVATE_RTB_ID=%s\n' "$PRIVATE_RTB_ID" >> "$ID_FILE"
+echo "Created Private Route Table with ID: $PRIVATE_RTB_ID"
+
+# Name the private route table
+aws ec2 create-tags \
+  --resources "$PRIVATE_RTB_ID" \
+  --tags Key=Name,Value="Private_Route_Table" \
+  --region "$REGION"
+
+# Add route: 0.0.0.0/0 -> NAT Gateway
+aws ec2 create-route \
+  --route-table-id "$PRIVATE_RTB_ID" \
+  --destination-cidr-block "0.0.0.0/0" \
+  --nat-gateway-id "$NATGW_ID" \
+  --region "$REGION"
+
+echo "Added route 0.0.0.0/0 -> NAT GW $NATGW_ID to Private Route Table $PRIVATE_RTB_ID"
+
+# -------------------------
+# Associate private subnets with the private route table
+# -------------------------
+for subnet in "${Subnet_Array[@]}"; do
+  SUBNET_NAME=$(echo "$subnet" | jq -r '.SubnetName')
+
+  # Only private subnets
+  if [[ "$SUBNET_NAME" != Private_* ]]; then
+    continue
+  fi
+
+  SUBNET_ID=$(grep "^SUBNET_${SUBNET_NAME}_ID=" "$ID_FILE" | cut -d= -f2)
+
+  PRIVATE_ASSOC_ID=$(aws ec2 associate-route-table \
+    --route-table-id "$PRIVATE_RTB_ID" \
+    --subnet-id "$SUBNET_ID" \
+    --region "$REGION" \
+    --query 'AssociationId' \
+    --output text)
+
+  if [[ -z "$PRIVATE_ASSOC_ID" || "$PRIVATE_ASSOC_ID" == "None" ]]; then
+    printf 'Could not associate subnet %s with private route table.\n' "$SUBNET_NAME" >&2
+    exit 1
+  fi
+
+  printf 'PRIVATE_RTB_ASSOC_%s_ID=%s\n' "$SUBNET_NAME" "$PRIVATE_ASSOC_ID" >> "$ID_FILE"
+  echo "Associated $SUBNET_NAME ($SUBNET_ID) with Private Route Table $PRIVATE_RTB_ID"
 done
 
 printf '\nCreated resource IDs (also saved to %s):\n' "$ID_FILE"

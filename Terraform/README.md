@@ -3,16 +3,22 @@
 This configuration creates the following resources:
 
 - VPC `10.0.0.0/16`, tagged `my-codeCreatedVPC`
-- `Public_Subnet_1`: `10.0.1.0/24` in `us-east-1a`
+- `Public_Subnet_1`: `10.0.1.0/24` in `us-east-1a` — auto-assign public IPv4 enabled
 - `Private_Subnet_1`: `10.0.10.0/24` in `us-east-1a`
-- `Public_Subnet_2`: `10.0.2.0/24` in `us-east-1b`
+- `Public_Subnet_2`: `10.0.2.0/24` in `us-east-1b` — auto-assign public IPv4 enabled
 - Internet Gateway attached to the VPC
-- Public route table with a `0.0.0.0/0` → IGW route
-- Route table associations for both public subnets
+- Elastic IP address for the NAT Gateway
+- NAT Gateway placed in `Public_Subnet_1`
+- Public route table with a `0.0.0.0/0` → IGW route, associated to both public subnets
+- Private route table with a `0.0.0.0/0` → NAT Gateway route, associated to `Private_Subnet_1`
 
 Terraform stores the resource IDs in its state and exposes them as outputs.
 AWS credentials are read from the environment; do not put access keys in
 Terraform files or commit state files.
+
+> **Cost warning:** NAT Gateways are billed by the hour (~$0.045/hr) plus per-GB
+> data transfer, even when idle. Run `terraform destroy` when you are done to
+> avoid unexpected charges.
 
 ## Create a new deployment
 
@@ -34,7 +40,7 @@ If the plan contains only the resources you intend to create, apply it:
 terraform apply tfplan
 ```
 
-Show all created resource IDs:
+Show all created resource IDs and the NAT Gateway's public IP:
 
 ```bash
 terraform output
@@ -59,12 +65,15 @@ placeholder with the corresponding ID from `AWS_CLI/Resources.env`:
 ```bash
 cd Terraform
 terraform init
-terraform import aws_vpc.main                              <VPC_ID>
-terraform import 'aws_subnet.subnets["Public_Subnet_1"]'  <SUBNET_Public_Subnet_1_ID>
-terraform import 'aws_subnet.subnets["Private_Subnet_1"]' <SUBNET_Private_Subnet_1_ID>
-terraform import 'aws_subnet.subnets["Public_Subnet_2"]'  <SUBNET_Public_Subnet_2_ID>
-terraform import aws_internet_gateway.main                 <IGW_ID>
-terraform import aws_route_table.public                    <RTB_ID>
+terraform import aws_vpc.main                                         <VPC_ID>
+terraform import 'aws_subnet.subnets["Public_Subnet_1"]'             <SUBNET_Public_Subnet_1_ID>
+terraform import 'aws_subnet.subnets["Private_Subnet_1"]'            <SUBNET_Private_Subnet_1_ID>
+terraform import 'aws_subnet.subnets["Public_Subnet_2"]'             <SUBNET_Public_Subnet_2_ID>
+terraform import aws_internet_gateway.main                            <IGW_ID>
+terraform import aws_eip.nat                                          <EIP_ALLOC_ID>
+terraform import aws_nat_gateway.main                                 <NATGW_ID>
+terraform import aws_route_table.public                               <RTB_ID>
+terraform import aws_route_table.private                              <PRIVATE_RTB_ID>
 terraform plan
 ```
 

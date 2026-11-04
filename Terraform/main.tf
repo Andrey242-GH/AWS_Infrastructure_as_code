@@ -51,6 +51,11 @@ resource "aws_subnet" "subnets" {
   cidr_block        = each.value.cidr_block
   availability_zone = each.value.availability_zone
 
+  # Instances launched into a public subnet automatically receive a public IPv4
+  # address. Private subnets do not get this setting — they route outbound
+  # traffic through the NAT Gateway instead.
+  map_public_ip_on_launch = strcontains(each.key, "Public_")
+
   tags = {
     Name = each.key
   }
@@ -94,4 +99,63 @@ resource "aws_route_table_association" "public" {
 
   subnet_id      = aws_subnet.subnets[each.key].id
   route_table_id = aws_route_table.public.id
+}
+
+# -------------------------
+# Elastic IP for NAT Gateway
+# -------------------------
+resource "aws_eip" "nat" {
+  domain = "vpc"
+
+  tags = {
+    Name = "my-codeCreatedNATGW-EIP"
+  }
+}
+
+# -------------------------
+# NAT Gateway (placed in Public_Subnet_1)
+# -------------------------
+resource "aws_nat_gateway" "main" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.subnets["Public_Subnet_1"].id
+
+  tags = {
+    Name = "my-codeCreatedNATGW"
+  }
+
+  # NAT GW requires the IGW to exist first
+  depends_on = [aws_internet_gateway.main]
+}
+
+# -------------------------
+# Route Table for private subnets
+# -------------------------
+# Routes outbound traffic from private subnets through the NAT Gateway
+# so instances can reach the internet without being directly reachable.
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.main.id
+  }
+
+  tags = {
+    Name = "Private_Route_Table"
+  }
+}
+
+# Associate every private subnet with the private route table.
+locals {
+  private_subnets = {
+    for name, config in local.subnets : name => config
+    if strcontains(name, "Private_")
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  for_each = local.private_subnets
+
+  subnet_id      = aws_subnet.subnets[each.key].id
+  route_table_id = aws_route_table.private.id
 }
