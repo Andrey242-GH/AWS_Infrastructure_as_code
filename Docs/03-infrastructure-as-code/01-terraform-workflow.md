@@ -26,7 +26,7 @@ aws sts get-caller-identity
 ```
 
 Make sure the command returns the AWS account and IAM identity you expect to
-use. For setup, see [02-AWS-CREDENTIALS-CODESPACES.md](02-AWS-CREDENTIALS-CODESPACES.md).
+use. For setup, see [../01-setup/02-aws-credentials-in-codespaces.md](../01-setup/02-aws-credentials-in-codespaces.md).
 
 ---
 

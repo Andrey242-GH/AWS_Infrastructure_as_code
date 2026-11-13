@@ -85,5 +85,5 @@ aws-cli/2.x.x Python/3.x.x Linux/x86_64
 
 ## Next Steps
 
-- Configure AWS credentials: [02-AWS-CREDENTIALS-CODESPACES.md](02-AWS-CREDENTIALS-CODESPACES.md)
-- Learn the AWS CLI and Terraform workflows: [03-TERRAFORM-WORKFLOW.md](03-TERRAFORM-WORKFLOW.md)
+- Configure AWS credentials: [02-aws-credentials-in-codespaces.md](02-aws-credentials-in-codespaces.md)
+- Learn the AWS CLI and Terraform workflows: [../03-infrastructure-as-code/01-terraform-workflow.md](../03-infrastructure-as-code/01-terraform-workflow.md)
