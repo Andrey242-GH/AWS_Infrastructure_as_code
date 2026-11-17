@@ -38,6 +38,6 @@ Docs/
 
 ## Lesson 1: Run Apache and inspect Docker
 
-The first practical lesson uses the `php:7.3-apache` image to serve the course directory through Apache. It introduces the difference between an image and a running container, and practices checking local images with `docker images` and active containers with `docker ps`.
+The first practical lesson uses a current PHP image such as `php:8.2-apache` to serve the course directory through Apache. Older tags like `php:7.3-apache` are end-of-life and may no longer be available in Docker Hub. This lesson introduces the difference between an image and a running container, and practices checking local images with `docker images` and active containers with `docker ps`.
 
 See the full steps and command explanations in [Lesson 1: Run Apache and Inspect Docker](Docs/04-containers/02-docker-setup-and-usage.md#7-course-lesson-1-run-apache-and-inspect-docker).

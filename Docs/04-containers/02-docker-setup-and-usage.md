@@ -252,14 +252,13 @@ The first lesson in this course is a practical introduction to running a contain
 docker images
 ```
 
-This lists local images. If `php:7.3-apache` is not listed yet, Docker will download it from Docker Hub the first time you run the command below.
+This lists local images. If `php:8.2-apache` is not listed yet, Docker will download it from Docker Hub the first time you run the command below.
 
 ### 2. Run the PHP and Apache container
 
 From the directory containing your `index.php`, run:
-
 ```bash
-docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:7.3-apache
+docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:8.2-apache
 ```
 
 This starts Apache with PHP inside a container. The bind mount makes the current directory available to Apache, so it can serve your `index.php`. You do not need to install Apache or PHP directly on your machine.
@@ -278,7 +277,7 @@ docker ps
 docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 ```
 
-You should see a `php:7.3-apache` container with host port `8080` mapped to container port `80`. The container is the running instance; the image is the packaged environment it was started from.
+You should see a `php:8.2-apache` container with host port `8080` mapped to container port `80`. The container is the running instance; the image is the packaged environment it was started from.
 
 ### 4. Open the page and stop the container
 
@@ -348,12 +347,12 @@ Port 8080 is chosen on the host side because port 80 often requires root privile
 
 ---
 
-### Why `php:7.3-apache`?
+### Why `php:8.2-apache`?
 
 This is the image name. It tells Docker which pre-built environment to use.
 
 - `php` is the official PHP image on Docker Hub, maintained by the PHP project.
-- `7.3` is the PHP version tag — it pins you to PHP 7.3 specifically so the environment is predictable and does not change unexpectedly.
+- `8.2` is a supported PHP version tag that works reliably with current Docker Hub images.
 - `apache` is a variant tag meaning this image comes with Apache already installed and configured alongside PHP. Without the `apache` variant, the base `php` image only includes the PHP CLI with no web server.
 
 By combining PHP and Apache into one image, this single command replaces what would otherwise require installing and configuring both tools manually.
@@ -363,9 +362,9 @@ By combining PHP and Apache into one image, this single command replaces what wo
 ### Putting it all together
 
 ```
-docker run   --rm              -v ${PWD}:/var/www/html     -p 8080:80       php:7.3-apache
+docker run   --rm              -v ${PWD}:/var/www/html     -p 8080:80       php:8.2-apache
    │            │                       │                        │                 │
-Launch a    Delete it          Serve your local            Expose it on        Use PHP 7.3
+Launch a    Delete it          Serve your local            Expose it on        Use PHP 8.2
 container   when done          PHP files via Apache         port 8080          with Apache
 ```
 
@@ -385,7 +384,7 @@ phpinfo();
 2. Run the command:
 
 ```bash
-docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:7.3-apache
+docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:8.2-apache
 ```
 
 3. Open `http://localhost:8080` in your browser. You will see your PHP page rendered by Apache running inside the container.
@@ -401,7 +400,7 @@ docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:7.3-apache
 If you want to keep your terminal free while the server runs:
 
 ```bash
-docker run -d --rm -v ${PWD}:/var/www/html -p 8080:80 --name php-dev php:7.3-apache
+docker run -d --rm -v ${PWD}:/var/www/html -p 8080:80 --name php-dev php:8.2-apache
 ```
 
 The `-d` flag detaches the container so it runs silently in the background. Give it a name with `--name` so you can refer to it easily:
@@ -427,7 +426,7 @@ A Dockerfile lets you build a custom image instead of relying purely on run-time
 
 ```dockerfile
 # Start from the official PHP Apache image
-FROM php:7.3-apache
+FROM php:8.2-apache
 
 # Copy your app files into the image at build time
 COPY . /var/www/html/
@@ -464,7 +463,7 @@ version: "3.8"
 
 services:
   web:
-    image: php:7.3-apache
+    image: php:8.2-apache
     ports:
       - "8080:80"
     volumes:
@@ -514,10 +513,10 @@ docker compose logs -f web
 
 ```bash
 # WRONG — space between -- and rm breaks the flag
-docker run -- rm -v ${PWD}:/var/www/html -p 8080:80 php:7.3-apache
+docker run -- rm -v ${PWD}:/var/www/html -p 8080:80 php:8.2-apache
 
 # CORRECT — no space
-docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:7.3-apache
+docker run --rm -v ${PWD}:/var/www/html -p 8080:80 php:8.2-apache
 ```
 
 The space causes Docker to interpret `rm` as the name of the image, so it tries to pull an image called `rm`, which does not exist.
@@ -531,9 +530,8 @@ Error: bind: address already in use
 Another process is using port 8080. Either stop that process or use a different host port:
 
 ```bash
-docker run --rm -v ${PWD}:/var/www/html -p 9090:80 php:7.3-apache
+docker run --rm -v ${PWD}:/var/www/html -p 9090:80 php:8.2-apache
 ```
-
 ### Permission denied on bind mount
 
 ```bash
