@@ -22,5 +22,33 @@ docker stop {containerID}
 
 ---------------------------------------------------------------------
 
-docker run -d --name myRunningApp -p 8080:80 my-php-app
-docker run -- rm -v ${PWD}:/var/www/html -p 808@:80 php:7.3-apache
+- I added this on the docker file 
+
+RUN docker-php-ext-install mysqli
+
+- and then i run 
+
+docker run -- rm -v ${PWD}:/var/www/html -p 8080:80 sqli
+
+- it did not work 
+
+- so i added this on the php file 
+
+$servername = getenv('DB_HOST');
+$username = getenv('DB_USER');
+$password = getenv('DB_PASS');
+
+and then run 
+
+$servername = getenv('');
+$username = getenv('DB_USER');
+$password = getenv('DB_PASS');
+
+docker run -- rm -v ${PWD}:/var/www/html -e DB_HOST='127.0.0.1' -e DB_USER='AndreyAcuna' -e DB_PASS="12awsq" 8080:80 sqli
+
+and it did not work eaither so
+
+I created the docker-compose and it worked 
+
+
+so I can run basic stuff about docker
