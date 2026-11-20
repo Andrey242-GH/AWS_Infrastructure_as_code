@@ -1,43 +1,33 @@
 # Docker Learning Lab
 
-This repository documents a Docker course I am taking and the hands-on lessons I complete along the way.
+Notes and hands-on lessons from a Docker course. The project is a small Python app (`main.py`, a URL status dashboard) that is built into an image, pushed to Amazon ECR with Terraform, and run on ECS.
 
-The goal is to learn the core Docker workflow:
-- create a container image
-- run containers
-- inspect container behavior
-- connect services together
-- manage images and containers cleanly
+## Where to start
 
-This is not focused on AWS infrastructure deployment. It is focused on learning Docker fundamentals and how containers work in real projects.
-
-## Course notes
-
-The notes explain the concepts covered in the course and record the commands I use to practice them. Lesson 1 focuses on running a PHP and Apache container, then inspecting the Docker image and active container.
-
-Start with the [container introduction](Docs/04-containers/01-container-intro.md), then follow [Docker setup and usage](Docs/04-containers/02-docker-setup-and-usage.md) for the first practical lesson.
+| I want to | Read |
+|---|---|
+| Understand images vs containers | [Container introduction](Docs/04-containers/01-container-intro.md) |
+| Install Docker and run the first lesson | [Install and first lesson](Docs/04-containers/02-docker-install-and-first-lesson.md) |
+| Look up a command (build, update, run, push, clean up) | [Docker commands cheatsheet](Docs/04-containers/03-docker-commands-cheatsheet.md) |
+| Push the image to AWS | [Push to ECR](Docs/06-deployment/01-push-to-ecr.md) |
 
 ## Documentation structure
 
 ```text
 Docs/
-  01-setup/
-    01-install-terraform-and-aws-cli.md
-    02-aws-credentials-in-codespaces.md
-    03-github-codespaces-setup.md
-  02-aws-fundamentals/
-    01-networking-concepts-explained.md
-  03-infrastructure-as-code/
-    01-terraform-workflow.md
-  04-containers/
-    01-container-intro.md
-    02-docker-setup-and-usage.md
-  05-github/
-    01-github-repository-setup.md
+  01-setup/                  Terraform, AWS CLI, credentials, Codespaces
+  02-aws-fundamentals/       Networking concepts
+  03-infrastructure-as-code/ Terraform workflow
+  04-containers/             Concepts, install, lesson 1, commands cheatsheet
+  05-github/                 Saving the project to GitHub
+  06-deployment/             Push to ECR, run on ECS, update and redeploy
 ```
 
-## Lesson 1: Run Apache and inspect Docker
+## Quick run
 
-The first practical lesson uses a current PHP image such as `php:8.2-apache` to serve the course directory through Apache. Older tags like `php:7.3-apache` are end-of-life and may no longer be available in Docker Hub. This lesson introduces the difference between an image and a running container, and practices checking local images with `docker images` and active containers with `docker ps`.
+```bash
+docker build -t py-automation:v1 .
+docker run --rm -p 8080:8080 py-automation:v1
+```
 
-See the full steps and command explanations in [Lesson 1: Run Apache and Inspect Docker](Docs/04-containers/02-docker-setup-and-usage.md#7-course-lesson-1-run-apache-and-inspect-docker).
+Then open `http://localhost:8080`.

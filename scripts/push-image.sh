@@ -5,7 +5,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TAG="${1:-latest}"
-IMAGE_NAME="my-php-app"
+IMAGE_NAME="py-automation"
 
 for cmd in docker terraform aws; do
   command -v "$cmd" >/dev/null || { echo "Missing: $cmd" >&2; exit 1; }
